@@ -69,17 +69,23 @@ MarginTracer AI includes a full lifecycle investigation tracker integrated direc
 
 ---
 
-## 🤖 Empirical Machine Learning Evaluation
+## 🤖 Phase 6: Empirical Machine Learning & Governance Audit
 
-Evaluated using an **80% Train / 20% Test chronological holdout**:
+Evaluated using an **80% Train (13,665 rows) / 20% Test (3,417 rows) chronological holdout**:
 
-| Model | Training Accuracy | Testing Accuracy | Testing Macro-F1 | Evaluation Finding |
-| :--- | :---: | :---: | :---: | :--- |
-| **Baseline (Most Frequent)** | **81.70%** | **81.88%** | 0.3001 | Achieves high accuracy simply by predicting majority class (`Completed`). |
-| **Random Forest** | 79.80% | 62.36% | **0.3357** | Exhibits ~90% false-positive rate on minority leak classes. |
-| **Logistic Regression** | 63.96% | 47.64% | 0.2942 | Severely underperforms dummy baseline. |
+| Model | Training Accuracy | Testing Accuracy | Testing Macro-F1 | Generalization Gap | Evaluation Finding |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Baseline (Most Frequent)** | **81.70%** | **81.88%** | 0.3001 | 0.00% | High accuracy by blindly guessing majority class (`Completed`). |
+| **Random Forest** | 79.80% | 62.36% | **0.3357** | **-17.43%** | High false-positive rate (~90%) on minority leak classes. |
+| **Logistic Regression** | 63.96% | 47.64% | 0.2942 | **-16.32%** | Severely underperforms simple dummy baseline. |
 
-*MarginTracer AI reports these limitations transparently, advising leadership to use predictive models as advisory triage signals rather than automated decision-makers.*
+### 🔍 Per-Class Precision & Recall Breakdown (Random Forest)
+- **Cancelled Orders (Support: 313):** Precision **10.48%** | Recall **18.85%** | F1 **0.1347** (89.5% False Positives)
+- **Returned Orders (Support: 306):** Precision **9.02%** | Recall **11.11%** | F1 **0.0996** (91.0% False Positives)
+- **Completed Orders (Support: 2,798):** Precision **82.28%** | Recall **72.84%** | F1 **0.7727**
+
+### 🛡️ Critical Governance Finding
+Predicting transaction status is an **operational friction signal** (e.g. buyer sizing hesitation, payment gateway 3DS drop-offs), **NOT proof of financial fraud or illicit money leakage**. MarginTracer AI advises leadership to use model scores purely as advisory triage filters rather than autonomous decision-makers.
 
 ---
 
@@ -102,9 +108,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Run Automated Verification Suite
+### 3. Run Automated Verification Suites
 ```bash
+# Verify Phase 5 Case Management Workflow
 python test_phase5_case_management.py
+
+# Verify Phase 6 ML Insights & Governance Audit
+python test_phase6_ml_insights.py
 ```
 
 ### 4. Launch the Dashboard
@@ -121,10 +131,12 @@ Open **`http://localhost:8501`** in your browser.
 MarginTrace-AI/
 ├── app.py                            # Unified Streamlit Dashboard (8 unified tabs)
 ├── case_manager.py                   # Persistent SQLite Case Management Data Layer (Phase 5)
-├── test_phase5_case_management.py    # Automated Verification Suite for Case Management
+├── model_experiment.py               # Empirical ML pipeline (holdout, per-class, confusion matrices)
+├── model_insights.py                 # Standalone ML insights module
+├── test_phase5_case_management.py    # Automated Verification Suite for Case Management (Phase 5)
+├── test_phase6_ml_insights.py        # Automated Verification Suite for ML Integration (Phase 6)
 ├── business_analysis.py              # Revenue, discount & status aggregation engine
 ├── leak_detection.py                 # Algorithmic anomaly & targeted evidence generator
-├── model_experiment.py               # ML benchmark (holdout, confusion matrix, metrics)
 ├── profile_data.py                   # Data quality, null & key integrity profiler
 ├── requirements.txt                  # Python dependencies
 ├── README.md                         # Project documentation
@@ -137,6 +149,11 @@ MarginTrace-AI/
     ├── margintracer_cases.db         # Persistent SQLite database for investigation cases
     ├── data_quality_report.md
     ├── model_comparison.csv
+    ├── per_class_metrics.csv
+    ├── test_predictions.csv
+    ├── confusion_baseline_most_frequent.csv
+    ├── confusion_logistic_regression.csv
+    ├── confusion_random_forest.csv
     ├── leak_high_return_products.csv
     ├── leak_repeat_customers.csv
     ├── leak_max_discount_transactions.csv

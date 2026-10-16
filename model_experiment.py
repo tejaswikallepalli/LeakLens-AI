@@ -37,7 +37,7 @@ def load_transactions():
 
 def main():
     print("=" * 65)
-    print("MARGINTRACE - TRANSACTION STATUS MODEL EXPERIMENT")
+    print("MARGINTRACER AI - TRANSACTION STATUS MODEL EXPERIMENT")
     print("=" * 65)
 
     df = load_transactions()
@@ -162,6 +162,7 @@ def main():
 
     results = []
     prediction_rows = []
+    per_class_rows = []
 
     for name, classifier in models.items():
         print("\n" + "-" * 65)
@@ -203,11 +204,29 @@ def main():
         print("Testing Accuracy: ", round(test_accuracy, 4))
         print("Testing Macro-F1: ", round(test_macro_f1, 4))
         print("\nTest Classification report:")
-        print(classification_report(
+        rep_text = classification_report(
             y_test,
             test_predictions,
             zero_division=0,
-        ))
+        )
+        print(rep_text)
+
+        rep_dict = classification_report(
+            y_test,
+            test_predictions,
+            output_dict=True,
+            zero_division=0,
+        )
+        for cls_name in ["Cancelled", "Completed", "Returned", "macro avg", "weighted avg"]:
+            if cls_name in rep_dict:
+                per_class_rows.append({
+                    "model": name,
+                    "class": cls_name,
+                    "precision": round(rep_dict[cls_name]["precision"], 4),
+                    "recall": round(rep_dict[cls_name]["recall"], 4),
+                    "f1_score": round(rep_dict[cls_name]["f1-score"], 4),
+                    "support": int(rep_dict[cls_name]["support"]),
+                })
 
         labels = sorted(y.unique())
         cm = confusion_matrix(y_test, test_predictions, labels=labels)
@@ -232,6 +251,9 @@ def main():
         "macro_f1", ascending=False
     )
     results_df.to_csv(REPORT_DIR / "model_comparison.csv", index=False)
+
+    if per_class_rows:
+        pd.DataFrame(per_class_rows).to_csv(REPORT_DIR / "per_class_metrics.csv", index=False)
 
     if prediction_rows:
         pd.concat(prediction_rows, ignore_index=True).to_csv(

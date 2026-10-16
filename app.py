@@ -261,6 +261,62 @@ def render_finding_case_creation_box(finding_key: str):
                 st.error(f"❌ {res['error']}")
 
 
+def load_or_calc_per_class_metrics(model_name: str) -> pd.DataFrame:
+    """Load per-class classification metrics or compute from confusion matrix."""
+    per_class_path = REPORT_DIR / "per_class_metrics.csv"
+    if per_class_path.exists():
+        try:
+            df = pd.read_csv(per_class_path)
+            sub = df[df["model"].str.lower() == model_name.lower()].copy()
+            if not sub.empty:
+                return sub[["class", "precision", "recall", "f1_score", "support"]]
+        except Exception:
+            pass
+
+    # Dynamic fallback from confusion matrix
+    safe_name = model_name.lower().replace(" ", "_")
+    cm_path = REPORT_DIR / f"confusion_{safe_name}.csv"
+    if cm_path.exists():
+        try:
+            cm = pd.read_csv(cm_path, index_col=0)
+            labels = ["Cancelled", "Completed", "Returned"]
+            rows = []
+            for l in labels:
+                act_row = f"actual_{l}"
+                pred_col = f"predicted_{l}"
+                if act_row in cm.index and pred_col in cm.columns:
+                    tp = float(cm.loc[act_row, pred_col])
+                    support = float(cm.loc[act_row].sum())
+                    pred_tot = float(cm[pred_col].sum())
+                    prec = (tp / pred_tot) if pred_tot > 0 else 0.0
+                    rec = (tp / support) if support > 0 else 0.0
+                    f1 = (2 * prec * rec / (prec + rec)) if (prec + rec) > 0 else 0.0
+                    rows.append({
+                        "class": l,
+                        "precision": round(prec, 4),
+                        "recall": round(rec, 4),
+                        "f1_score": round(f1, 4),
+                        "support": int(support),
+                    })
+            if rows:
+                macro_p = sum(r["precision"] for r in rows) / len(rows)
+                macro_r = sum(r["recall"] for r in rows) / len(rows)
+                macro_f1 = sum(r["f1_score"] for r in rows) / len(rows)
+                tot_sup = sum(r["support"] for r in rows)
+                rows.append({
+                    "class": "macro avg",
+                    "precision": round(macro_p, 4),
+                    "recall": round(macro_r, 4),
+                    "f1_score": round(macro_f1, 4),
+                    "support": tot_sup,
+                })
+                return pd.DataFrame(rows)
+        except Exception:
+            pass
+
+    return pd.DataFrame(columns=["class", "precision", "recall", "f1_score", "support"])
+
+
 # -----------------------------------------------------------------------------
 # Main Application Flow
 # -----------------------------------------------------------------------------
@@ -1673,96 +1729,380 @@ def main():
             st.info("No active cases logged yet. Submit the form above or use the Case Management Workflow tab to record your first operational case.")
 
     # =========================================================================
-    # TAB 6: ML INSIGHTS & MODEL EVALUATION
+    # TAB 7: ML INSIGHTS & MODEL EVALUATION (PHASE 6 CORE)
     # =========================================================================
     with tab_ml:
         st.subheader("🤖 Machine Learning Insights & Model Evaluation")
         st.caption("Empirical, transparent evaluation of predictive models on pre-outcome transaction signals.")
 
+        # Critical Methodology & Fraud Distinction Banner
+        st.warning(
+            "⚠️ **Methodological Boundary: Transaction Status Prediction $\\neq$ Fraud or Money Leak Detection**\n\n"
+            "- **Operational Friction Signal Only:** Predicting whether an order will be Cancelled or Returned indicates customer friction "
+            "(e.g. payment gateway 3DS timeouts, buyer sizing hesitation, delivery delays)—**NOT employee embezzlement, card fraud, or illegal leakage**.\n"
+            "- **Customer Protection:** Most cancellations are voluntary drop-offs and most returns are normal retail exchanges. "
+            "Autonomously blocking customers or accusing accounts based on probabilistic model predictions causes severe brand harm.\n"
+            "- **Scientific Integrity:** MarginTracer AI reports actual measured generalization metrics, compares against simple majority-class baselines, "
+            "and explicitly warns against claiming false predictive success."
+        )
+
+        # Artifact Status & Pipeline Control
         metrics_file = REPORT_DIR / "model_comparison.csv"
+        metadata_file = REPORT_DIR / "model_experiment_metadata.json"
+        predictions_file = REPORT_DIR / "test_predictions.csv"
+        per_class_file = REPORT_DIR / "per_class_metrics.csv"
+        cm_files = sorted(REPORT_DIR.glob("confusion_*.csv"))
+
+        col_art_status, col_art_btn = st.columns([3, 1])
+        with col_art_status:
+            artifacts_present = all([metrics_file.exists(), metadata_file.exists(), predictions_file.exists(), len(cm_files) >= 2])
+            if artifacts_present:
+                st.markdown(
+                    "<span class='badge-verified'>ALL MODEL ARTIFACTS VERIFIED ON DISK</span> "
+                    f"<span style='color: #64748b; font-size: 0.85rem;'>({len(cm_files)} confusion matrices, predictions ledger, metrics summary)</span>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    "<span class='badge-alert'>MODEL ARTIFACTS INCOMPLETE OR MISSING</span> "
+                    "<span style='color: #64748b; font-size: 0.85rem;'>Click button to run model_experiment.py and generate fresh outputs.</span>",
+                    unsafe_allow_html=True,
+                )
+
+        with col_art_btn:
+            if st.button("🔄 Re-run Model Training Pipeline", help="Executes model_experiment.py on chronological holdout and updates all artifacts"):
+                with st.spinner("Training models (Dummy Baseline, Logistic Regression, Random Forest)..."):
+                    try:
+                        import model_experiment
+                        model_experiment.main()
+                        st.success("✅ Model pipeline executed successfully! Reloading artifacts...")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error during model execution: {e}")
+
+        st.divider()
+
         if not metrics_file.exists():
-            st.warning("⚠️ Model comparison report not found. Run `python model_experiment.py` in the terminal to generate.")
+            st.error("⚠️ `reports/model_comparison.csv` was not found. Click the 'Re-run Model Training Pipeline' button above to generate it.")
         else:
-            metrics_df = pd.read_csv(metrics_file)
+            try:
+                metrics_df = pd.read_csv(metrics_file)
+            except Exception as e:
+                st.error(f"❌ Failed to parse `model_comparison.csv`: {e}")
+                metrics_df = pd.DataFrame()
 
-            st.markdown("#### 1. Empirical Model Benchmark (Chronological Holdout)")
-            st.info(
-                "⚖️ **Evidence-First ML Evaluation:**\n"
-                "The task is a 3-class classification (`Completed`, `Cancelled`, `Returned`) on pre-outcome metadata "
-                "(quantity, price, discount, channel, payment method, timestamps). "
-                "The target is evaluated using an **80% train / 20% test chronological holdout split**."
-            )
+            if not metrics_df.empty:
+                # -------------------------------------------------------------
+                # 1. Empirical Model Benchmark (Chronological Holdout)
+                # -------------------------------------------------------------
+                st.markdown("#### 1. Empirical Model Benchmark (Chronological Holdout)")
+                st.caption("Evaluated on a chronological 80% train (Jan–Oct 2025) / 20% test (Oct–Dec 2025) holdout split across 17,082 usable records.")
 
-            # Metrics Table
-            disp_metrics = metrics_df.copy()
-            if "train_accuracy" in disp_metrics.columns:
-                disp_metrics["train_accuracy"] = disp_metrics["train_accuracy"].map(lambda x: f"{x * 100:.2f}%")
-            if "test_accuracy" in disp_metrics.columns:
-                disp_metrics["test_accuracy"] = disp_metrics["test_accuracy"].map(lambda x: f"{x * 100:.2f}%")
-            if "train_macro_f1" in disp_metrics.columns:
-                disp_metrics["train_macro_f1"] = disp_metrics["train_macro_f1"].map(lambda x: f"{x:.4f}")
-            if "test_macro_f1" in disp_metrics.columns:
-                disp_metrics["test_macro_f1"] = disp_metrics["test_macro_f1"].map(lambda x: f"{x:.4f}")
+                # Executive KPI metrics
+                bm_c1, bm_c2, bm_c3, bm_c4 = st.columns(4)
+                with bm_c1:
+                    baseline_row = metrics_df[metrics_df["model"].str.contains("Baseline", case=False, na=False)]
+                    b_acc = baseline_row["test_accuracy"].iloc[0] if not baseline_row.empty else 0.8188
+                    st.metric("Baseline Test Accuracy", f"{b_acc * 100:.2f}%", help="Simple Most-Frequent Dummy Classifier (always guesses Completed)")
+                with bm_c2:
+                    rf_row = metrics_df[metrics_df["model"].str.contains("Random Forest", case=False, na=False)]
+                    rf_f1 = rf_row["test_macro_f1"].iloc[0] if not rf_row.empty else 0.3357
+                    st.metric("Best Test Macro-F1", f"{rf_f1:.4f}", f"{rf_row['test_accuracy'].iloc[0]*100:.2f}% test acc" if not rf_row.empty else "", help="Random Forest (balanced_subsample)")
+                with bm_c3:
+                    st.metric("Evaluation Sample Size", "17,082 Orders", "13,665 Train / 3,417 Test", help="Pending transactions excluded to avoid label ambiguity")
+                with bm_c4:
+                    st.metric("Split Strategy", "Chronological Holdout", "80% Train / 20% Test", help="Preserves real-world temporal validity")
 
-            cols_order = [c for c in ["model", "train_accuracy", "test_accuracy", "train_macro_f1", "test_macro_f1", "train_rows", "test_rows"] if c in disp_metrics.columns]
-            st.dataframe(disp_metrics[cols_order], width="stretch", hide_index=True)
+                # Metrics Comparison Table
+                st.markdown("##### Performance Comparison Across All Evaluated Models")
+                disp_metrics = metrics_df.copy()
+                if "train_accuracy" in disp_metrics.columns and "test_accuracy" in disp_metrics.columns:
+                    disp_metrics["generalization_gap"] = (disp_metrics["train_accuracy"] - disp_metrics["test_accuracy"])
+                
+                # Format columns
+                for c in ["train_accuracy", "test_accuracy"]:
+                    if c in disp_metrics.columns:
+                        disp_metrics[c] = disp_metrics[c].map(lambda x: f"{x * 100:.2f}%")
+                if "generalization_gap" in disp_metrics.columns:
+                    disp_metrics["generalization_gap"] = disp_metrics["generalization_gap"].map(lambda x: f"{x * 100:+.2f}%")
+                for c in ["train_macro_f1", "test_macro_f1"]:
+                    if c in disp_metrics.columns:
+                        disp_metrics[c] = disp_metrics[c].map(lambda x: f"{x:.4f}")
 
-            # Visual Comparison of Generalization Gap
-            st.markdown("#### 2. Generalization Gap & Overfitting Analysis")
-            if {"train_accuracy", "test_accuracy"}.issubset(metrics_df.columns):
-                gap_fig = go.Figure()
-                gap_fig.add_trace(go.Bar(
-                    name="Training Accuracy",
-                    x=metrics_df["model"],
-                    y=metrics_df["train_accuracy"],
-                    marker_color="#3B82F6",
-                ))
-                gap_fig.add_trace(go.Bar(
-                    name="Testing Accuracy",
-                    x=metrics_df["model"],
-                    y=metrics_df["test_accuracy"],
-                    marker_color="#10B981",
-                ))
-                gap_fig.update_layout(
-                    barmode="group",
-                    title="Training vs. Testing Accuracy by Model",
-                    yaxis_title="Accuracy",
-                    yaxis=dict(range=[0, 1.0]),
+                show_cols = [c for c in ["model", "train_accuracy", "test_accuracy", "generalization_gap", "train_macro_f1", "test_macro_f1", "train_rows", "test_rows"] if c in disp_metrics.columns]
+                st.dataframe(disp_metrics[show_cols], width="stretch", hide_index=True)
+
+                # Visual Charts: Generalization Gap & Macro-F1
+                c_chart1, c_chart2 = st.columns(2)
+                with c_chart1:
+                    if {"train_accuracy", "test_accuracy"}.issubset(metrics_df.columns):
+                        gap_fig = go.Figure()
+                        gap_fig.add_trace(go.Bar(
+                            name="Training Accuracy",
+                            x=metrics_df["model"],
+                            y=metrics_df["train_accuracy"],
+                            marker_color="#3B82F6",
+                            text=[f"{v*100:.1f}%" for v in metrics_df["train_accuracy"]],
+                            textposition="auto",
+                        ))
+                        gap_fig.add_trace(go.Bar(
+                            name="Testing Accuracy",
+                            x=metrics_df["model"],
+                            y=metrics_df["test_accuracy"],
+                            marker_color="#10B981",
+                            text=[f"{v*100:.1f}%" for v in metrics_df["test_accuracy"]],
+                            textposition="auto",
+                        ))
+                        gap_fig.update_layout(
+                            barmode="group",
+                            title="Training vs. Testing Accuracy (Generalization Gap)",
+                            yaxis_title="Accuracy",
+                            yaxis=dict(range=[0, 1.0]),
+                            margin=dict(t=40, b=10, l=10, r=10),
+                        )
+                        st.plotly_chart(gap_fig, width="stretch")
+
+                with c_chart2:
+                    if "test_macro_f1" in metrics_df.columns:
+                        f1_fig = px.bar(
+                            metrics_df,
+                            x="model",
+                            y="test_macro_f1",
+                            color="model",
+                            title="Testing Macro-F1 Comparison",
+                            text_auto=".4f",
+                        )
+                        f1_fig.update_layout(
+                            showlegend=False,
+                            yaxis_title="Macro-F1 Score",
+                            yaxis=dict(range=[0, 0.6]),
+                            margin=dict(t=40, b=10, l=10, r=10),
+                        )
+                        st.plotly_chart(f1_fig, width="stretch")
+
+                # The Honest Reality Check Callout
+                st.info(
+                    "🚨 **The Honest Reality: Why the Simple Dummy Baseline Wins on Accuracy (81.88%):**\n\n"
+                    "- **The Optical Illusion of Majority Classes:** Because **81.88% of held-out transactions are Completed**, "
+                    "a trivial dummy rule that blindly guesses `Completed` for every single order achieves **81.88% accuracy**.\n"
+                    "- **Complex Models Degrade Under Reality:** In contrast, Random Forest achieves only **62.36% testing accuracy** "
+                    "(a steep -17.4% generalization drop from its 79.80% training accuracy).\n"
+                    "- **No Predictive Silver Bullet:** Balanced class weighting forces Random Forest to guess minority classes more frequently, "
+                    "which slightly lifts Macro-F1 from 0.3001 to 0.3357, but causes catastrophic false positive rates on minority classes."
                 )
-                st.plotly_chart(gap_fig, width="stretch")
 
-            # Key Finding Callout
-            st.warning(
-                "🚨 **Why the Baseline Wins on Accuracy (81.88%):**\n"
-                "Because **81.9% of held-out transactions are Completed**, a trivial Dummy Baseline that always guesses 'Completed' "
-                "achieves **81.88% accuracy**. In contrast, Random Forest achieves only **62.36% testing accuracy**.\n\n"
-                "Furthermore, on minority leak classes (`Cancelled` and `Returned`), Random Forest has a **~90% false positive rate**. "
-                "MarginTracer reports these genuine limitations transparently, recommending that models serve as advisory filters, not automated decision-makers."
-            )
+                st.divider()
 
-            # Confusion Matrix Viewer
-            st.divider()
-            st.markdown("#### 3. Confusion Matrix Inspector")
-            cm_files = sorted(REPORT_DIR.glob("confusion_*.csv"))
-            if cm_files:
-                selected_cm_path = st.selectbox(
-                    "Select Model for Confusion Matrix",
-                    cm_files,
-                    format_func=lambda p: p.stem.replace("confusion_", "").replace("_", " ").title(),
-                )
-                cm_data = pd.read_csv(selected_cm_path, index_col=0)
-                fig_cm = px.imshow(
-                    cm_data,
-                    text_auto=True,
-                    aspect="auto",
-                    color_continuous_scale="Blues",
-                    title=f"Confusion Matrix: {selected_cm_path.stem.replace('confusion_', '').replace('_', ' ').title()}",
-                    labels=dict(x="Predicted Class", y="Actual Class", color="Count"),
-                )
-                st.plotly_chart(fig_cm, width="stretch")
+                # -------------------------------------------------------------
+                # 2. Per-Class Granular Performance & Confusion Matrix Heatmap
+                # -------------------------------------------------------------
+                st.markdown("#### 2. Per-Class Granular Performance & Confusion Matrices")
+                st.caption("Inspect class-specific precision, recall, and false-positive distributions for each model.")
+
+                available_models = metrics_df["model"].dropna().unique().tolist()
+                selected_model = st.selectbox("Select Model for In-Depth Class Breakdown", available_models, index=0)
+
+                col_pc_table, col_pc_cm = st.columns([1, 1])
+
+                with col_pc_table:
+                    st.markdown(f"##### Per-Class Performance: `{selected_model}`")
+                    pc_df = load_or_calc_per_class_metrics(selected_model)
+                    if not pc_df.empty:
+                        disp_pc = pc_df.copy()
+                        for col in ["precision", "recall"]:
+                            if col in disp_pc.columns:
+                                disp_pc[col] = disp_pc[col].map(lambda x: f"{x * 100:.2f}%" if pd.notnull(x) else "N/A")
+                        if "f1_score" in disp_pc.columns:
+                            disp_pc["f1_score"] = disp_pc["f1_score"].map(lambda x: f"{x:.4f}" if pd.notnull(x) else "N/A")
+                        if "support" in disp_pc.columns:
+                            disp_pc["support"] = disp_pc["support"].map(lambda x: f"{int(x):,}" if pd.notnull(x) else "N/A")
+                        disp_pc.columns = ["Target Class", "Precision (%)", "Recall (%)", "F1-Score", "Support (Test Count)"]
+                        st.dataframe(disp_pc, width="stretch", hide_index=True)
+                    else:
+                        st.write("Per-class metrics not available for this model.")
+
+                    if "Random Forest" in selected_model:
+                        st.error(
+                            "📉 **Critical Vulnerability on Minority Classes:**\n\n"
+                            "- **Cancelled Orders:** Precision is only **10.48%** (89.52% false-positive rate!). Out of 563 predicted cancellations, 504 were actually completed!\n"
+                            "- **Returned Orders:** Precision is only **9.02%** (90.98% false-positive rate!). Out of 377 predicted returns, 343 were actually completed!"
+                        )
+                    elif "Baseline" in selected_model:
+                        st.warning(
+                            "📌 **Baseline Limitation:**\n"
+                            "The baseline achieves **0.00% precision and recall on Cancelled and Returned orders** because it never predicts them. "
+                            "It achieves high accuracy purely due to the 81.88% completed transaction majority."
+                        )
+
+                with col_pc_cm:
+                    st.markdown(f"##### Confusion Matrix: `{selected_model}`")
+                    safe_cm_name = selected_model.lower().replace(" ", "_")
+                    cm_path = REPORT_DIR / f"confusion_{safe_cm_name}.csv"
+                    if cm_path.exists():
+                        cm_data = pd.read_csv(cm_path, index_col=0)
+                        fig_cm = px.imshow(
+                            cm_data,
+                            text_auto=True,
+                            aspect="auto",
+                            color_continuous_scale="Blues",
+                            title=f"Actual vs. Predicted: {selected_model}",
+                            labels=dict(x="Predicted Class", y="Actual Class", color="Transaction Count"),
+                        )
+                        fig_cm.update_layout(margin=dict(t=40, b=10, l=10, r=10))
+                        st.plotly_chart(fig_cm, width="stretch")
+                    else:
+                        st.info(f"Confusion matrix file `confusion_{safe_cm_name}.csv` not found.")
+
+                st.divider()
+
+                # -------------------------------------------------------------
+                # 3. Held-Out Test Prediction Explorer & Error Audit
+                # -------------------------------------------------------------
+                st.markdown("#### 3. Held-Out Test Prediction Explorer & Error Audit")
+                st.caption("Inspect individual test transactions, filter by prediction accuracy, and audit misclassifications.")
+
+                if predictions_file.exists():
+                    try:
+                        preds_df = pd.read_csv(predictions_file)
+                    except Exception as e:
+                        st.error(f"❌ Error loading test predictions: {e}")
+                        preds_df = pd.DataFrame()
+
+                    if not preds_df.empty:
+                        # Filters
+                        pr_col1, pr_col2, pr_col3, pr_col4 = st.columns(4)
+                        with pr_col1:
+                            pred_models = sorted(preds_df["model"].dropna().unique().tolist())
+                            sel_pred_model = st.selectbox("Filter by Model", pred_models, index=pred_models.index("Random Forest") if "Random Forest" in pred_models else 0)
+                        with pr_col2:
+                            sel_outcome = st.selectbox("Prediction Accuracy", ["All Predictions", "Misclassifications Only (Errors)", "Accurate Only"], index=1)
+                        with pr_col3:
+                            target_classes = ["All"] + sorted(preds_df["actual_status"].dropna().unique().tolist())
+                            sel_target_cls = st.selectbox("Actual Status", target_classes, index=0)
+                        with pr_col4:
+                            display_n = st.select_slider("Rows to Display", options=[50, 100, 250, 500, 1000], value=100)
+
+                        # Apply filters
+                        sub_preds = preds_df[preds_df["model"] == sel_pred_model].copy()
+                        sub_preds["is_error"] = sub_preds["actual_status"] != sub_preds["predicted_status"]
+
+                        if sel_outcome == "Misclassifications Only (Errors)":
+                            sub_preds = sub_preds[sub_preds["is_error"]]
+                        elif sel_outcome == "Accurate Only":
+                            sub_preds = sub_preds[~sub_preds["is_error"]]
+
+                        if sel_target_cls != "All":
+                            sub_preds = sub_preds[sub_preds["actual_status"] == sel_target_cls]
+
+                        # Metrics
+                        tot_sub = len(sub_preds)
+                        err_sub = int(sub_preds["is_error"].sum())
+                        err_rate = (err_sub / tot_sub * 100) if tot_sub > 0 else 0.0
+
+                        pe1, pe2, pe3 = st.columns(3)
+                        with pe1:
+                            st.metric("Filtered Records", f"{tot_sub:,}")
+                        with pe2:
+                            st.metric("Misclassifications", f"{err_sub:,}", delta_color="inverse")
+                        with pe3:
+                            st.metric("Error Rate", f"{err_rate:.2f}%")
+
+                        # Display Table
+                        cols_to_disp = [c for c in ["row_index", "timestamp", "actual_status", "predicted_status", "is_error", "model"] if c in sub_preds.columns]
+                        st.dataframe(sub_preds[cols_to_disp].head(display_n), width="stretch", hide_index=True)
+
+                        # CSV Download
+                        st.download_button(
+                            "📥 Download Held-Out Predictions CSV",
+                            data=sub_preds.to_csv(index=False).encode("utf-8"),
+                            file_name=f"margintracer_test_predictions_{sel_pred_model.lower().replace(' ', '_')}.csv",
+                            mime="text/csv",
+                        )
+                else:
+                    st.info("Held-out test predictions file not found. Run `python model_experiment.py` to generate.")
+
+                st.divider()
+
+                # -------------------------------------------------------------
+                # 4. Methodological Audit & Leakage Checklist
+                # -------------------------------------------------------------
+                st.markdown("#### 4. Methodological Audit & Model Governance Checklist")
+                st.caption("Detailed architectural review addressing target leakage, memorization risk, class imbalance, and evaluation rigor.")
+
+                with st.expander("🔍 Target Variable & Excluded Record Rationale", expanded=True):
+                    st.markdown(
+                        """
+                        - **Target Definition:** `status` $\\in$ `['Completed', 'Cancelled', 'Returned']`.
+                        - **Why `Pending` Orders Were Excluded (918 records):**
+                          - `Pending` transactions represent in-flight, unconfirmed orders where the ultimate business outcome is not yet resolved.
+                          - Treating `Pending` as a fourth permanent class introduces severe label ambiguity, as these orders will eventually resolve into Completed, Cancelled, or Returned.
+                          - Excluding `Pending` ensures clean, ground-truth supervised learning labels on the 17,082 verified transactions.
+                        """
+                    )
+
+                with st.expander("🛡️ Target Leakage & Feature Selection Audit", expanded=True):
+                    st.markdown(
+                        """
+                        - **Strict Pre-Outcome Temporal Horizon:**
+                          - All input features are restricted to metadata accessible **at the moment the order is initiated**:
+                            `quantity`, `unit_price`, `discount_pct`, `transaction_month`, `transaction_dayofweek`, `transaction_hour`, `channel`, `payment_method`.
+                        - **Excluded Post-Outcome Fields:**
+                          - Downstream operational timestamps (e.g. shipping confirmation, refund issuance date), post-purchase support tickets, and dispute flags are strictly excluded.
+                          - Primary key identifier `transaction_id` is excluded to prevent arbitrary index memorization.
+                        """
+                    )
+
+                with st.expander("⚠️ Identifier Memorization Risk (`customer_id` & `product_id`)", expanded=True):
+                    st.markdown(
+                        """
+                        - **High-Cardinality One-Hot Encoding:**
+                          - The experimental pipeline includes `customer_id` (3,000 entities) and `product_id` (250 SKUs) in the one-hot categorical encoder.
+                        - **Memorization vs. Generalization:**
+                          - While including entity IDs helps identify repeat-offender accounts in historical data, tree-based models risk **memorizing specific historical buyers** rather than learning generalized fraud or cancellation signals.
+                          - If a brand-new customer makes a purchase tomorrow, one-hot encoded ID features offer zero predictive power.
+                        """
+                    )
+
+                with st.expander("📅 Split Strategy: Chronological Holdout vs. Random K-Fold", expanded=True):
+                    st.markdown(
+                        """
+                        - **Chronological 80/20 Holdout:**
+                          - Earlier 13,665 transactions (Jan 1, 2025 to Oct 17, 2025) are used for model training; later 3,417 transactions (Oct 17, 2025 to Dec 31, 2025) are used strictly for held-out evaluation.
+                        - **Why Random K-Fold Splitting is Invalid for Retail Modeling:**
+                          - Randomly shuffling transactions causes **temporal data leakage**: future customer behavior and seasonal promotional patterns leak into past predictions.
+                          - Chronological splitting accurately simulates how models decay over time when deployed in production, honestly exposing the ~17.4% generalization drop.
+                        """
+                    )
+
+                with st.expander("⚖️ Class Imbalance & The Balanced-Weight Tradeoff", expanded=True):
+                    st.markdown(
+                        """
+                        - **81.88% Majority Class Baseline:**
+                          - Completed orders dominate the dataset (13,962 of 17,082 records).
+                          - An unweighted classifier achieves high accuracy (81.88%) by simply predicting `Completed` for all inputs, but yields **0.00% recall on Cancelled and Returned orders**.
+                        - **The False-Positive Explosion of Class Balancing:**
+                          - Setting `class_weight='balanced_subsample'` forces the Random Forest to heavily penalize missing minority classes.
+                          - While this increases minority recall to ~11–19%, it creates a massive false-positive spike: **~90% of all predicted cancellations and returns are false alarms**!
+                        """
+                    )
+
+                st.divider()
+
+                # -------------------------------------------------------------
+                # 5. Raw Experiment Metadata
+                # -------------------------------------------------------------
+                st.markdown("#### 5. Raw Experiment Metadata")
+                if metadata_file.exists():
+                    try:
+                        meta_data = json.loads(metadata_file.read_text(encoding="utf-8"))
+                        st.json(meta_data)
+                    except Exception as e:
+                        st.warning(f"Could not parse metadata JSON: {e}")
+                else:
+                    st.info("Metadata file not found.")
 
     # =========================================================================
-    # TAB 7: DATA QUALITY & VERIFICATION
+    # TAB 8: DATA QUALITY & VERIFICATION
     # =========================================================================
     with tab_quality:
         st.subheader("🛡️ Data Quality & Ground-Truth Verification")

@@ -1,0 +1,16 @@
+model,class,precision,recall,f1_score,support
+Baseline most frequent,Cancelled,0.0,0.0,0.0,313
+Baseline most frequent,Completed,0.8188,1.0,0.9004,2798
+Baseline most frequent,Returned,0.0,0.0,0.0,306
+Baseline most frequent,macro avg,0.2729,0.3333,0.3001,3417
+Baseline most frequent,weighted avg,0.6705,0.8188,0.7373,3417
+Logistic Regression,Cancelled,0.0833,0.2077,0.1189,313
+Logistic Regression,Completed,0.8137,0.5354,0.6458,2798
+Logistic Regression,Returned,0.0817,0.2124,0.118,306
+Logistic Regression,macro avg,0.3262,0.3185,0.2942,3417
+Logistic Regression,weighted avg,0.6812,0.4764,0.5503,3417
+Random Forest,Cancelled,0.1048,0.1885,0.1347,313
+Random Forest,Completed,0.8228,0.7284,0.7727,2798
+Random Forest,Returned,0.0902,0.1111,0.0996,306
+Random Forest,macro avg,0.3393,0.3427,0.3357,3417
+Random Forest,weighted avg,0.6914,0.6236,0.654,3417
