@@ -1,0 +1,6 @@
+file,rows,columns,missing_cells,duplicate_rows
+transactions.csv,18000,10,0,0
+customers.csv,3000,5,0,0
+products.csv,250,5,0,0
+inventory.csv,5000,7,0,0
+campaigns.csv,1200,8,0,0

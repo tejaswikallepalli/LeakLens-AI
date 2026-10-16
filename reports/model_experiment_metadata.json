@@ -1,0 +1,21 @@
+{
+  "experiment": "transaction_status_classification",
+  "target": "status",
+  "excluded_status": "Pending",
+  "split": "chronological 80% train / 20% test",
+  "features": [
+    "quantity",
+    "unit_price",
+    "discount_pct",
+    "transaction_month",
+    "transaction_dayofweek",
+    "transaction_hour",
+    "channel",
+    "payment_method",
+    "customer_id",
+    "product_id"
+  ],
+  "leakage_notes": "Status, transaction_id, and post-outcome fields excluded. Customer/product IDs are included if present and may create memorization risk. Results indicate prediction, not causation.",
+  "best_model_by_macro_f1": "Random Forest",
+  "best_macro_f1": 0.33565512649832613
+}

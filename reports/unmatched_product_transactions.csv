@@ -1,0 +1,1 @@
+transaction_id,customer_id,product_id,timestamp,quantity,unit_price,discount_pct,status,channel,payment_method,gross_value,discount_fraction,discount_amount,estimated_net_value,unit_cost,list_price,_merge
