@@ -9,11 +9,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+import case_manager
+
 # -----------------------------------------------------------------------------
 # Configuration & Theme Setup
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="MarginTrace AI | The Money Leak",
+    page_title="MarginTracer AI | The Money Leak",
     page_icon="🔎",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -53,6 +55,38 @@ st.markdown(
         border-radius: 4px;
         font-size: 0.75rem;
         font-weight: 600;
+    }
+    .badge-status-open {
+        background-color: #dbeafe;
+        color: #1e40af;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 700;
+    }
+    .badge-status-investigating {
+        background-color: #fef3c7;
+        color: #92400e;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 700;
+    }
+    .badge-status-resolved {
+        background-color: #dcfce7;
+        color: #166534;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 700;
+    }
+    .badge-status-dismissed {
+        background-color: #f1f5f9;
+        color: #475569;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 700;
     }
     .finding-card {
         background-color: #ffffff;
@@ -163,16 +197,68 @@ def load_all_data():
 
 
 def load_investigation_cases():
-    if CASES_FILE.exists():
-        try:
-            return pd.read_csv(CASES_FILE).to_dict("records")
-        except Exception:
-            return []
-    return []
+    """Load cases safely from SQLite database as dictionary records."""
+    try:
+        df = case_manager.get_all_cases()
+        return df.to_dict("records")
+    except Exception:
+        return []
 
 
 def save_investigation_cases(cases):
-    pd.DataFrame(cases).to_csv(CASES_FILE, index=False)
+    """Legacy helper preserved for backward compatibility."""
+    pass
+
+
+def render_finding_case_creation_box(finding_key: str):
+    """Render an in-place case creation component for a specific detected finding."""
+    template = case_manager.DETECTED_FINDINGS.get(finding_key)
+    if not template:
+        return
+
+    with st.expander(f"📋 Create Persistent Investigation Case from {template['title'].split(':')[0]}", expanded=False):
+        st.markdown(f"**Target Finding:** `{template['title']}`")
+        st.caption(
+            "Pre-populates finding metadata into an active case stored in local SQLite (`margintracer_cases.db`). "
+            "Never labels potential exposure as confirmed loss."
+        )
+
+        with st.form(key=f"form_case_{finding_key}"):
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                f_owner = st.text_input("Assignee / Lead", value="Investigation Taskforce", key=f"owner_{finding_key}")
+            with col_f2:
+                valid_prios = ["Critical", "High", "Medium", "Low"]
+                prio_idx = valid_prios.index(template["default_priority"]) if template["default_priority"] in valid_prios else 1
+                f_priority = st.selectbox("Priority Level", valid_prios, index=prio_idx, key=f"prio_{finding_key}")
+            with col_f3:
+                f_action = st.text_input("Immediate Next Action", value=template["default_next_action"], key=f"action_{finding_key}")
+
+            f_notes = st.text_area(
+                "Initial Audit Notes & Hypotheses",
+                value=f"Evidence: {template['evidence_reference']}. Scope: {template['affected_record_count']:,} records. Potential review exposure: ${template['exposure_estimate']:,.2f}.",
+                key=f"notes_{finding_key}",
+            )
+            btn_submit = st.form_submit_button(f"🚀 Register Case for {template['title'].split(':')[0]}")
+
+        if btn_submit:
+            res = case_manager.create_case(
+                title=template["title"],
+                category=template["category"],
+                description=template["description"],
+                evidence_reference=template["evidence_reference"],
+                affected_record_count=template["affected_record_count"],
+                exposure_estimate=template["exposure_estimate"],
+                priority=f_priority,
+                owner=f_owner,
+                next_action=f_action,
+                notes=f_notes,
+            )
+            if res["success"]:
+                st.success(f"✅ Case registered with ID: **{res['case_id']}**! View and manage in the **'📋 Case Management Workflow'** tab.")
+                st.rerun()
+            else:
+                st.error(f"❌ {res['error']}")
 
 
 # -----------------------------------------------------------------------------
@@ -189,7 +275,7 @@ def main():
     # Application Header
     col_hdr, col_badge = st.columns([4, 1])
     with col_hdr:
-        st.title("🔎 MarginTrace AI")
+        st.title("🔎 MarginTracer AI")
         st.caption("Find the leak. Prove the signal. Prioritize the fix. — DATATHON-2K26 Track 4")
     with col_badge:
         st.markdown(
@@ -276,11 +362,12 @@ def main():
         st.stop()
 
     # -------------------------------------------------------------------------
-    # Navigation Tabs (7 Unified Sections)
+    # Navigation Tabs (8 Unified Sections including Phase 5 Case Management)
     # -------------------------------------------------------------------------
-    tab_exec, tab_investigate, tab_explore, tab_analytics, tab_calc, tab_ml, tab_quality = st.tabs([
+    tab_exec, tab_investigate, tab_cases, tab_explore, tab_analytics, tab_calc, tab_ml, tab_quality = st.tabs([
         "📊 Executive Overview",
         "🕵️ Leak Investigation Engine",
+        "📋 Case Management Workflow",
         "🔎 Transaction Explorer",
         "📈 Channel & Status Analytics",
         "🧮 Exposure & Scenario Calculator",
@@ -479,6 +566,7 @@ def main():
                     file_name="leak_high_return_products.csv",
                     mime="text/csv",
                 )
+            render_finding_case_creation_box("finding_1")
 
         # ---------------------------------------------------------------------
         # FINDING 2: REPEAT LEAK CUSTOMERS
@@ -518,6 +606,7 @@ def main():
                     file_name="leak_repeat_customers.csv",
                     mime="text/csv",
                 )
+            render_finding_case_creation_box("finding_2")
 
         # ---------------------------------------------------------------------
         # FINDING 3: 25% DISCOUNT CLUSTERING
@@ -563,6 +652,7 @@ def main():
                     file_name="leak_max_discount_transactions.csv",
                     mime="text/csv",
                 )
+            render_finding_case_creation_box("finding_3")
 
         # ---------------------------------------------------------------------
         # FINDING 4: CATALOG PRICE < COST
@@ -605,6 +695,7 @@ def main():
                     file_name="product_price_cost_anomalies.csv",
                     mime="text/csv",
                 )
+            render_finding_case_creation_box("finding_4")
 
         # ---------------------------------------------------------------------
         # FINDING 5: CRITICAL INVENTORY BOTTLENECKS
@@ -642,6 +733,7 @@ def main():
                     file_name="leak_critical_inventory.csv",
                     mime="text/csv",
                 )
+            render_finding_case_creation_box("finding_5")
 
         # ---------------------------------------------------------------------
         # FINDING 6: CREDIT CARD CANCELLATIONS
@@ -683,6 +775,290 @@ def main():
                     file_name="leak_card_cancellations.csv",
                     mime="text/csv",
                 )
+            render_finding_case_creation_box("finding_6")
+
+    # =========================================================================
+    # TAB 3: CASE MANAGEMENT WORKFLOW (PHASE 5 CORE)
+    # =========================================================================
+    with tab_cases:
+        st.subheader("📋 Persistent Investigation Case Management")
+        st.caption("Track, investigate, update, and resolve money leak cases with persistent SQLite storage and linked evidence.")
+
+        # Financial Accountability Policy Banner
+        st.info(
+            "🛡️ **Financial Accountability & Evidence Linking:**\n"
+            "- Every investigation case links directly to reproducible transaction evidence files stored in `reports/`.\n"
+            "- Exposure estimates reflect **hypothetical upper-bound review scope**, never confirmed embezzlement or audited fraud.\n"
+            "- Cases are stored in a local SQLite database (`reports/margintracer_cases.db`) with full ACID persistence across app restarts."
+        )
+
+        # Case Statistics Metric Cards
+        stats = case_manager.get_case_statistics()
+        m_c1, m_c2, m_c3, m_c4, m_c5, m_c6 = st.columns(6)
+        with m_c1:
+            st.metric("Total Cases", f"{stats['total_cases']}")
+        with m_c2:
+            st.metric("Open", f"{stats['open_count']}")
+        with m_c3:
+            st.metric("Investigating", f"{stats['investigating_count']}")
+        with m_c4:
+            st.metric("Resolved", f"{stats['resolved_count']}")
+        with m_c5:
+            st.metric("Dismissed", f"{stats['dismissed_count']}")
+        with m_c6:
+            st.metric("Exposure Under Review", f"${stats['total_exposure']:,.2f}", help="Sum of potential exposure estimates across active cases")
+
+        st.divider()
+
+        # Section 1: Create Case Hub
+        with st.expander("➕ Open Case Creation Hub (Pre-Fill from Finding or Custom)", expanded=(stats["total_cases"] == 0)):
+            create_mode = st.radio(
+                "Creation Method",
+                ["Pre-Fill from Detected Leak Finding", "Create Custom Investigation Case"],
+                horizontal=True,
+            )
+
+            if create_mode == "Pre-Fill from Detected Leak Finding":
+                f_keys = list(case_manager.DETECTED_FINDINGS.keys())
+                selected_f_key = st.selectbox(
+                    "Choose Detected Finding to Pre-fill",
+                    f_keys,
+                    format_func=lambda k: f"{case_manager.DETECTED_FINDINGS[k]['title']} (${case_manager.DETECTED_FINDINGS[k]['exposure_estimate']:,.2f})",
+                )
+                template_data = case_manager.DETECTED_FINDINGS[selected_f_key]
+                with st.form("form_create_from_template"):
+                    col_tf1, col_tf2 = st.columns(2)
+                    with col_tf1:
+                        tf_title = st.text_input("Case Title", value=template_data["title"])
+                        tf_cat = st.text_input("Finding Category", value=template_data["category"])
+                        tf_evidence = st.text_input("Evidence Reference", value=template_data["evidence_reference"])
+                        tf_owner = st.text_input("Assignee / Lead", value="Investigation Taskforce")
+                    with col_tf2:
+                        tf_prio = st.selectbox("Priority Level", ["Critical", "High", "Medium", "Low"], index=["Critical", "High", "Medium", "Low"].index(template_data["default_priority"]))
+                        tf_count = st.number_input("Affected Record Count", value=int(template_data["affected_record_count"]), min_value=0)
+                        tf_exposure = st.number_input("Potential Exposure Estimate ($)", value=float(template_data["exposure_estimate"]), min_value=0.0, format="%.2f")
+                        tf_action = st.text_input("Immediate Next Action", value=template_data["default_next_action"])
+
+                    tf_desc = st.text_area("Finding Description", value=template_data["description"])
+                    tf_notes = st.text_area("Initial Audit Notes", value=f"Pre-populated from {template_data['title']}. Evidence link verified.")
+                    submit_template_case = st.form_submit_button("🚀 Create Case in Persistent Database")
+
+                if submit_template_case:
+                    res = case_manager.create_case(
+                        title=tf_title,
+                        category=tf_cat,
+                        description=tf_desc,
+                        evidence_reference=tf_evidence,
+                        affected_record_count=tf_count,
+                        exposure_estimate=tf_exposure,
+                        priority=tf_prio,
+                        owner=tf_owner,
+                        next_action=tf_action,
+                        notes=tf_notes,
+                    )
+                    if res["success"]:
+                        st.success(f"✅ Investigation Case **{res['case_id']}** created and saved to SQLite!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {res['error']}")
+
+            else:
+                with st.form("form_create_custom_case"):
+                    col_cf1, col_cf2 = st.columns(2)
+                    with col_cf1:
+                        cust_title = st.text_input("Case Title (Required)", placeholder="e.g. Audit of Cash on Delivery high-cancellation batch")
+                        cust_cat = st.selectbox("Category", [
+                            "Product Quality & Return Risk",
+                            "Customer Policy Abuse & Churn Risk",
+                            "Pricing Governance & Margin Erosion",
+                            "Catalog Master Data Inconsistency",
+                            "Supply Chain & Stockout Vulnerability",
+                            "Payment Instrument & Checkout Friction",
+                            "Operational Discrepancy",
+                            "Other",
+                        ])
+                        cust_evidence = st.text_input("Evidence Reference (File or Query)", value="reports/investigation_custom.csv")
+                        cust_owner = st.text_input("Assignee / Owner", value="Finance & Audit Team")
+                    with col_cf2:
+                        cust_prio = st.selectbox("Priority Level", ["Critical", "High", "Medium", "Low"], index=1)
+                        cust_count = st.number_input("Affected Record Count", min_value=0, value=10)
+                        cust_exposure = st.number_input("Potential Exposure ($)", min_value=0.0, value=5000.0, format="%.2f")
+                        cust_action = st.text_input("Immediate Next Action (Required)", placeholder="e.g. Pull order logs from fulfillment system")
+
+                    cust_desc = st.text_area("Detailed Description", placeholder="Context, hypothesis, and affected channel or products...")
+                    cust_notes = st.text_area("Initial Audit Notes", placeholder="Initial observations, hypothesis, or preliminary notes...")
+                    submit_custom_case = st.form_submit_button("💾 Save Custom Case to SQLite")
+
+                if submit_custom_case:
+                    res = case_manager.create_case(
+                        title=cust_title,
+                        category=cust_cat,
+                        description=cust_desc,
+                        evidence_reference=cust_evidence,
+                        affected_record_count=cust_count,
+                        exposure_estimate=cust_exposure,
+                        priority=cust_prio,
+                        owner=cust_owner,
+                        next_action=cust_action,
+                        notes=cust_notes,
+                    )
+                    if res["success"]:
+                        st.success(f"✅ Custom Case **{res['case_id']}** created successfully!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {res['error']}")
+
+        st.divider()
+
+        # Section 2: Case Ledger with Multi-field Filtering & CSV Export
+        st.markdown("#### 🔍 Investigation Cases Ledger")
+        all_cases_df = case_manager.get_all_cases()
+
+        if all_cases_df.empty:
+            st.info("ℹ️ No investigation cases recorded yet. Use the 'Open Case Creation Hub' above or click 'Create Case' on any finding in the Leak Investigation Engine to register your first case.")
+        else:
+            # Multi-field Filters
+            f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+            with f_col1:
+                status_opts = ["All"] + sorted(all_cases_df["status"].unique().tolist())
+                sel_status = st.selectbox("Filter by Status", status_opts, index=0)
+            with f_col2:
+                prio_opts = ["All"] + sorted(all_cases_df["priority"].unique().tolist())
+                sel_prio = st.selectbox("Filter by Priority", prio_opts, index=0)
+            with f_col3:
+                owner_opts = ["All"] + sorted(all_cases_df["owner"].unique().tolist())
+                sel_owner = st.selectbox("Filter by Owner", owner_opts, index=0)
+            with f_col4:
+                cat_opts = ["All"] + sorted(all_cases_df["category"].unique().tolist())
+                sel_cat = st.selectbox("Filter by Category", cat_opts, index=0)
+
+            filtered_cases = all_cases_df.copy()
+            if sel_status != "All":
+                filtered_cases = filtered_cases[filtered_cases["status"] == sel_status]
+            if sel_prio != "All":
+                filtered_cases = filtered_cases[filtered_cases["priority"] == sel_prio]
+            if sel_owner != "All":
+                filtered_cases = filtered_cases[filtered_cases["owner"] == sel_owner]
+            if sel_cat != "All":
+                filtered_cases = filtered_cases[filtered_cases["category"] == sel_cat]
+
+            st.write(f"Showing **{len(filtered_cases)}** of **{len(all_cases_df)}** recorded investigation cases:")
+
+            # Display table
+            display_ledger = filtered_cases[[
+                "case_id", "status", "priority", "category", "title",
+                "affected_record_count", "exposure_estimate", "owner", "next_action", "updated_at"
+            ]].copy()
+            display_ledger["exposure_estimate"] = display_ledger["exposure_estimate"].map("${:,.2f}".format)
+            display_ledger["affected_record_count"] = display_ledger["affected_record_count"].map("{:,}".format)
+            st.dataframe(display_ledger, width="stretch", hide_index=True)
+
+            # Export to CSV
+            c_exp1, c_exp2 = st.columns([2, 1])
+            with c_exp1:
+                st.caption(f"Database contains {len(all_cases_df)} total persistent cases in `reports/margintracer_cases.db`.")
+            with c_exp2:
+                st.download_button(
+                    "📥 Export Cases to CSV",
+                    data=filtered_cases.to_csv(index=False).encode("utf-8"),
+                    file_name=f"margintracer_cases_export_{time.strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                )
+
+            st.divider()
+
+            # Section 3: Case Detail View & Lifecycle Updater
+            st.markdown("#### 🛠️ Case Detail View & Lifecycle Management")
+            selected_case_id = st.selectbox(
+                "Select Case to View & Update",
+                options=all_cases_df["case_id"].tolist(),
+                format_func=lambda cid: f"{cid} — {all_cases_df.loc[all_cases_df['case_id'] == cid, 'title'].iloc[0]} [{all_cases_df.loc[all_cases_df['case_id'] == cid, 'status'].iloc[0]}]",
+            )
+
+            case_detail = case_manager.get_case(selected_case_id)
+            if case_detail:
+                # Detail view card
+                cd1, cd2, cd3 = st.columns([2, 1, 1])
+                with cd1:
+                    st.markdown(f"### {case_detail['title']}")
+                    st.markdown(f"**Category:** `{case_detail['category']}` | **Case ID:** `{case_detail['case_id']}`")
+                    st.markdown(f"**Description:** {case_detail['description']}")
+                with cd2:
+                    st.metric("Status", case_detail["status"])
+                    st.metric("Priority", case_detail["priority"])
+                with cd3:
+                    st.metric("Potential Exposure", f"${case_detail['exposure_estimate']:,.2f}")
+                    st.metric("Affected Records", f"{case_detail['affected_record_count']:,}")
+
+                st.markdown(f"**Evidence Reference Link:** `{case_detail['evidence_reference']}`")
+                evidence_p = Path(case_detail['evidence_reference'])
+                if evidence_p.exists():
+                    st.success(f"🔗 Linked evidence file `{case_detail['evidence_reference']}` is verified on disk.")
+                else:
+                    st.warning(f"⚠️ Evidence file `{case_detail['evidence_reference']}` not found on disk.")
+
+                st.markdown("##### 📝 Case Audit & Notes History")
+                if case_detail["notes"]:
+                    st.code(case_detail["notes"], language="markdown")
+                else:
+                    st.caption("No notes recorded yet.")
+
+                if case_detail["resolution_notes"]:
+                    st.markdown("##### 🏁 Resolution Explanation / Root Cause")
+                    st.success(case_detail["resolution_notes"])
+
+                st.divider()
+
+                # Update Form
+                st.markdown(f"##### 🔄 Update Case: `{case_detail['case_id']}`")
+                with st.form(f"form_update_{selected_case_id}"):
+                    u_col1, u_col2, u_col3 = st.columns(3)
+                    with u_col1:
+                        new_status = st.selectbox(
+                            "Lifecycle Status",
+                            ["Open", "Investigating", "Resolved", "Dismissed"],
+                            index=["Open", "Investigating", "Resolved", "Dismissed"].index(case_detail["status"]),
+                        )
+                        new_owner = st.text_input("Assignee / Owner", value=case_detail["owner"])
+                    with u_col2:
+                        new_priority = st.selectbox(
+                            "Priority Level",
+                            ["Critical", "High", "Medium", "Low"],
+                            index=["Critical", "High", "Medium", "Low"].index(case_detail["priority"]),
+                        )
+                    with u_col3:
+                        new_next_action = st.text_input("Immediate Next Action", value=case_detail["next_action"])
+
+                    new_note = st.text_area("Append New Audit Note (Dated timestamp added automatically)", placeholder="Describe actions taken, evidence reviewed, or vendor correspondence...")
+
+                    res_explanation = ""
+                    if new_status in ["Resolved", "Dismissed"]:
+                        res_explanation = st.text_area(
+                            "Resolution / Dismissal Explanation (Required when Resolving or Dismissing)",
+                            value=case_detail.get("resolution_notes", "") or "",
+                            placeholder="Explain the root cause identified, operational corrective action taken, vendor credit negotiated, or reason for dismissal...",
+                        )
+
+                    save_update = st.form_submit_button("💾 Save Case Updates")
+
+                if save_update:
+                    if new_status in ["Resolved", "Dismissed"] and not res_explanation.strip():
+                        st.error("⚠️ Please provide a resolution explanation when marking a case as Resolved or Dismissed.")
+                    else:
+                        u_res = case_manager.update_case(
+                            case_id=selected_case_id,
+                            status=new_status,
+                            next_action=new_next_action,
+                            owner=new_owner,
+                            priority=new_priority,
+                            additional_notes=new_note,
+                            resolution_notes=res_explanation,
+                        )
+                        if u_res["success"]:
+                            st.success(f"✅ Case `{selected_case_id}` updated successfully!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {u_res['error']}")
 
     # =========================================================================
     # TAB 3: TRANSACTION EXPLORER
@@ -1262,42 +1638,39 @@ def main():
             if not case_notes.strip() or not next_action.strip():
                 st.error("Please provide an evidence note and next action before saving.")
             else:
-                existing_cases = load_investigation_cases()
-                unique_case_id = f"CASE-{time.strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
-                new_entry = {
-                    "case_id": unique_case_id,
-                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "title": case_title.strip(),
-                    "category": finding_cat,
-                    "related_id": related_id.strip() if related_id else "N/A",
-                    "owner": case_owner.strip() if case_owner else "Unassigned",
-                    "priority": case_priority,
-                    "scenario_tier": selected_scenario_tier,
-                    "exposure_amount": active_exposure,
-                    "net_benefit": default_commit_benefit,
-                    "next_action": next_action.strip(),
-                    "notes": case_notes.strip(),
-                    "status": "Open",
-                }
-                existing_cases.append(new_entry)
-                save_investigation_cases(existing_cases)
-                st.success(f"Investigation case {unique_case_id} recorded successfully in persistent tracker.")
-                st.rerun()
+                sim_res = case_manager.create_case(
+                    title=case_title.strip(),
+                    category=finding_cat,
+                    description=f"Simulation Case ({selected_scenario_tier}): Committing to ${default_commit_benefit:,.2f} projected net benefit against ${active_exposure:,.2f} potential exposure.",
+                    evidence_reference=f"Simulator: {chosen_finding.split('(')[0].strip()}",
+                    affected_record_count=0,
+                    exposure_estimate=active_exposure,
+                    priority=case_priority,
+                    owner=case_owner.strip() if case_owner else "Unassigned",
+                    next_action=next_action.strip(),
+                    notes=case_notes.strip(),
+                )
+                if sim_res["success"]:
+                    st.success(f"✅ Investigation Case **{sim_res['case_id']}** recorded successfully in persistent SQLite database! View in '📋 Case Management Workflow' tab.")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {sim_res['error']}")
 
         # Display Existing Cases
         st.markdown("##### Active Case Log")
-        cases = load_investigation_cases()
-        if cases:
-            cases_df = pd.DataFrame(cases)
-            st.dataframe(cases_df, width="stretch", hide_index=True)
+        cases_df = case_manager.get_all_cases()
+        if not cases_df.empty:
+            disp_cases = cases_df[["case_id", "status", "priority", "category", "title", "exposure_estimate", "owner", "next_action", "created_at"]].copy()
+            disp_cases["exposure_estimate"] = disp_cases["exposure_estimate"].map("${:,.2f}".format)
+            st.dataframe(disp_cases, width="stretch", hide_index=True)
             st.download_button(
                 "📥 Export All Cases (CSV)",
                 data=cases_df.to_csv(index=False).encode("utf-8"),
-                file_name="margintrace_investigation_cases.csv",
+                file_name="margintracer_investigation_cases.csv",
                 mime="text/csv",
             )
         else:
-            st.info("No active cases logged yet. Submit the form above to record your first operational case.")
+            st.info("No active cases logged yet. Submit the form above or use the Case Management Workflow tab to record your first operational case.")
 
     # =========================================================================
     # TAB 6: ML INSIGHTS & MODEL EVALUATION
@@ -1364,7 +1737,7 @@ def main():
                 "Because **81.9% of held-out transactions are Completed**, a trivial Dummy Baseline that always guesses 'Completed' "
                 "achieves **81.88% accuracy**. In contrast, Random Forest achieves only **62.36% testing accuracy**.\n\n"
                 "Furthermore, on minority leak classes (`Cancelled` and `Returned`), Random Forest has a **~90% false positive rate**. "
-                "MarginTrace reports these genuine limitations transparently, recommending that models serve as advisory filters, not automated decision-makers."
+                "MarginTracer reports these genuine limitations transparently, recommending that models serve as advisory filters, not automated decision-makers."
             )
 
             # Confusion Matrix Viewer
