@@ -1,10 +1,11 @@
 """
-case_manager.py - Persistent SQLite Investigation Case Management Layer for MarginTracer AI.
+case_manager.py - Persistent SQLite Investigation Case Management Layer for LeakLens - AI.
 Provides ACID-compliant, persistent storage, input validation, duplicate prevention,
 status lifecycle management, and audit tracking across application restarts.
 """
 
 from pathlib import Path
+import shutil
 import sqlite3
 import time
 import uuid
@@ -13,7 +14,15 @@ import pandas as pd
 
 REPORT_DIR = Path("reports")
 REPORT_DIR.mkdir(exist_ok=True)
-DB_PATH = REPORT_DIR / "margintracer_cases.db"
+DB_PATH = REPORT_DIR / "leaklens_cases.db"
+
+# Legacy fallback / migration
+_legacy_db = REPORT_DIR / "margintracer_cases.db"
+if not DB_PATH.exists() and _legacy_db.exists():
+    try:
+        shutil.copy2(_legacy_db, DB_PATH)
+    except Exception:
+        pass
 
 
 def get_db_connection() -> sqlite3.Connection:
@@ -159,13 +168,13 @@ def create_case(
 def update_case(
     case_id: str,
     status: str,
-    next_action: str,
-    owner: str,
-    priority: str,
+    next_action: Optional[str] = None,
+    owner: Optional[str] = None,
+    priority: Optional[str] = None,
     additional_notes: str = "",
     resolution_notes: str = "",
 ) -> Dict[str, Any]:
-    """Update case status, owner, next action, and append audit notes."""
+    """Update case status, owner, next action, priority, and append audit notes."""
     init_db()
 
     valid_statuses = ["Open", "Investigating", "Resolved", "Dismissed"]
@@ -173,8 +182,6 @@ def update_case(
         return {"success": False, "error": f"Invalid status: {status}"}
 
     valid_priorities = ["Critical", "High", "Medium", "Low"]
-    if priority not in valid_priorities:
-        priority = "Medium"
 
     now_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -185,10 +192,14 @@ def update_case(
         if not case:
             return {"success": False, "error": f"Case {case_id} not found."}
 
+        final_priority = priority if (priority and priority in valid_priorities) else case["priority"]
+        final_owner = owner.strip() if (owner and owner.strip()) else case["owner"]
+        final_next_action = next_action.strip() if (next_action and next_action.strip()) else case["next_action"]
+
         existing_notes = case["notes"] or ""
         updated_notes = existing_notes
         if additional_notes and additional_notes.strip():
-            audit_entry = f"\n[{now_str} Update by {owner or 'User'}]: {additional_notes.strip()}"
+            audit_entry = f"\n[{now_str} Update by {final_owner}]: {additional_notes.strip()}"
             updated_notes = (existing_notes + audit_entry).strip()
 
         cursor.execute(
@@ -205,9 +216,9 @@ def update_case(
             """,
             (
                 status,
-                next_action.strip() if next_action else case["next_action"],
-                owner.strip() if owner else case["owner"],
-                priority,
+                final_next_action,
+                final_owner,
+                final_priority,
                 updated_notes,
                 resolution_notes.strip(),
                 resolution_notes.strip(),

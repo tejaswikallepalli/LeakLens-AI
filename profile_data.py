@@ -26,7 +26,7 @@ def main():
     tables = {}
 
     print("=" * 65)
-    print("MARGINTRACE AI - DATA PROFILE")
+    print("LEAKLENS - AI - DATA PROFILE")
     print("=" * 65)
 
     for filename in FILES:

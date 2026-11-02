@@ -37,7 +37,7 @@ def load_transactions():
 
 def main():
     print("=" * 65)
-    print("MARGINTRACER AI - TRANSACTION STATUS MODEL EXPERIMENT")
+    print("LEAKLENS - AI - TRANSACTION STATUS MODEL EXPERIMENT")
     print("=" * 65)
 
     df = load_transactions()

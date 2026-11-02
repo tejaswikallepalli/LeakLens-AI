@@ -1,6 +1,6 @@
 """
 test_phase6_ml_insights.py
-Automated end-to-end verification suite for MarginTracer AI Phase 6:
+Automated end-to-end verification suite for LeakLens - AI Phase 6:
 Integration of Empirical ML Experiments, Outputs, and Governance Audit.
 """
 
@@ -13,7 +13,7 @@ REPORT_DIR = Path("reports")
 
 def run_tests():
     print("=" * 70)
-    print("RUNNING MARGINTRACER AI - PHASE 6 ML INTEGRATION VERIFICATION SUITE")
+    print("RUNNING LEAKLENS - AI - PHASE 6 ML INTEGRATION VERIFICATION SUITE")
     print("=" * 70)
 
     # -------------------------------------------------------------------------

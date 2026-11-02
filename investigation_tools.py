@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 st.set_page_config(
-    page_title="MarginTrace Investigations",
+    page_title="LeakLens - AI Investigations",
     page_icon="🔎",
     layout="wide",
 )
@@ -35,7 +35,7 @@ def save_cases(cases):
     pd.DataFrame(cases).to_csv(CASES_FILE, index=False)
 
 
-st.title("🔎 MarginTrace — Investigation Center")
+st.title("🔎 LeakLens - AI — Investigation Center")
 st.caption("Estimate exposure, document evidence, and track the next action.")
 
 st.warning(
@@ -260,6 +260,6 @@ else:
     st.download_button(
         "Export case tracker",
         data=cases_df.to_csv(index=False).encode("utf-8"),
-        file_name="margintrace_investigation_cases.csv",
+        file_name="leaklens_investigation_cases.csv",
         mime="text/csv",
     )

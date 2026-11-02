@@ -35,7 +35,7 @@ def save_report(df, filename):
 
 def main():
     print("=" * 65)
-    print("MARGINTRACE - DATA VALIDATION AND LEAK CANDIDATES")
+    print("LEAKLENS - AI - DATA VALIDATION AND LEAK CANDIDATES")
     print("=" * 65)
 
     transactions = load_csv("transactions.csv")

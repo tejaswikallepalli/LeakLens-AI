@@ -1,6 +1,6 @@
 """
 test_phase5_case_management.py
-Automated end-to-end verification suite for MarginTracer AI Phase 5:
+Automated end-to-end verification suite for LeakLens - AI Phase 5:
 Persistent Investigation Case Management Workflow.
 """
 
@@ -12,7 +12,7 @@ import case_manager
 
 def run_tests():
     print("=" * 70)
-    print("RUNNING MARGINTRACER AI - PHASE 5 VERIFICATION SUITE")
+    print("RUNNING LEAKLENS - AI - PHASE 5 VERIFICATION SUITE")
     print("=" * 70)
 
     # Clean test start: reset database table for reproducible testing

@@ -1,8 +1,8 @@
-# MarginTrace AI — Verified Data Quality & Foundation Report
+# LeakLens - AI — Verified Data Quality & Foundation Report
 
 **Track 4: The Money Leak (DATATHON-2K26)**  
 **Generated Date:** 2026-10-16  
-**Auditor:** Lead Engineer, MarginTrace AI  
+**Auditor:** Lead Engineer, LeakLens - AI  
 
 ---
 
@@ -11,7 +11,7 @@
 This dataset is a synthetic educational dataset created for DATATHON-2K26. As documented in `README.txt`, costs, prices, transactions, inventory, and campaigns were independently generated. Consequently, synthetic discrepancies exist in margins and catalog pricing. 
 
 **Core Evidence Principle:**  
-MarginTrace AI treats anomalies as **investigation candidates**, never as confirmed theft or audited financial losses without external verification.
+LeakLens - AI treats anomalies as **investigation candidates**, never as confirmed theft or audited financial losses without external verification.
 
 ---
 

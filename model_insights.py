@@ -5,14 +5,14 @@ import plotly.express as px
 import streamlit as st
 
 st.set_page_config(
-    page_title="MarginTrace ML Insights",
+    page_title="LeakLens - AI ML Insights",
     page_icon="🤖",
     layout="wide",
 )
 
 REPORT_DIR = Path("reports")
 
-st.title("🤖 MarginTrace — ML Insights")
+st.title("🤖 LeakLens - AI — ML Insights")
 st.caption("Measured model performance, transparent evidence, no fabricated scores.")
 
 metrics_path = REPORT_DIR / "model_comparison.csv"
@@ -118,7 +118,7 @@ if predictions_path.exists():
     st.download_button(
         "Download test predictions",
         data=predictions.to_csv(index=False).encode("utf-8"),
-        file_name="margintrace_test_predictions.csv",
+        file_name="leaklens_test_predictions.csv",
         mime="text/csv",
     )
 else:

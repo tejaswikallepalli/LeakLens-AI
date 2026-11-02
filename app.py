@@ -15,7 +15,7 @@ import case_manager
 # Configuration & Theme Setup
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="MarginTracer AI | The Money Leak",
+    page_title="LeakLens - AI | The Money Leak",
     page_icon="🔎",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -219,7 +219,7 @@ def render_finding_case_creation_box(finding_key: str):
     with st.expander(f"📋 Create Persistent Investigation Case from {template['title'].split(':')[0]}", expanded=False):
         st.markdown(f"**Target Finding:** `{template['title']}`")
         st.caption(
-            "Pre-populates finding metadata into an active case stored in local SQLite (`margintracer_cases.db`). "
+            "Pre-populates finding metadata into an active case stored in local SQLite (`leaklens_cases.db`). "
             "Never labels potential exposure as confirmed loss."
         )
 
@@ -331,7 +331,7 @@ def main():
     # Application Header
     col_hdr, col_badge = st.columns([4, 1])
     with col_hdr:
-        st.title("🔎 MarginTracer AI")
+        st.title("🔎 LeakLens - AI")
         st.caption("Find the leak. Prove the signal. Prioritize the fix. — DATATHON-2K26 Track 4")
     with col_badge:
         st.markdown(
@@ -845,7 +845,7 @@ def main():
             "🛡️ **Financial Accountability & Evidence Linking:**\n"
             "- Every investigation case links directly to reproducible transaction evidence files stored in `reports/`.\n"
             "- Exposure estimates reflect **hypothetical upper-bound review scope**, never confirmed embezzlement or audited fraud.\n"
-            "- Cases are stored in a local SQLite database (`reports/margintracer_cases.db`) with full ACID persistence across app restarts."
+            "- Cases are stored in a local SQLite database (`reports/leaklens_cases.db`) with full ACID persistence across app restarts."
         )
 
         # Case Statistics Metric Cards
@@ -1012,12 +1012,12 @@ def main():
             # Export to CSV
             c_exp1, c_exp2 = st.columns([2, 1])
             with c_exp1:
-                st.caption(f"Database contains {len(all_cases_df)} total persistent cases in `reports/margintracer_cases.db`.")
+                st.caption(f"Database contains {len(all_cases_df)} total persistent cases in `reports/leaklens_cases.db`.")
             with c_exp2:
                 st.download_button(
                     "📥 Export Cases to CSV",
                     data=filtered_cases.to_csv(index=False).encode("utf-8"),
-                    file_name=f"margintracer_cases_export_{time.strftime('%Y%m%d_%H%M%S')}.csv",
+                    file_name=f"leaklens_cases_export_{time.strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv",
                 )
 
@@ -1192,7 +1192,7 @@ def main():
         st.download_button(
             label="📥 Download Filtered Transactions CSV",
             data=csv_data,
-            file_name="margintrace_filtered_transactions.csv",
+            file_name="leaklens_filtered_transactions.csv",
             mime="text/csv",
         )
 
@@ -1722,7 +1722,7 @@ def main():
             st.download_button(
                 "📥 Export All Cases (CSV)",
                 data=cases_df.to_csv(index=False).encode("utf-8"),
-                file_name="margintracer_investigation_cases.csv",
+                file_name="leaklens_investigation_cases.csv",
                 mime="text/csv",
             )
         else:
@@ -1742,7 +1742,7 @@ def main():
             "(e.g. payment gateway 3DS timeouts, buyer sizing hesitation, delivery delays)—**NOT employee embezzlement, card fraud, or illegal leakage**.\n"
             "- **Customer Protection:** Most cancellations are voluntary drop-offs and most returns are normal retail exchanges. "
             "Autonomously blocking customers or accusing accounts based on probabilistic model predictions causes severe brand harm.\n"
-            "- **Scientific Integrity:** MarginTracer AI reports actual measured generalization metrics, compares against simple majority-class baselines, "
+            "- **Scientific Integrity:** LeakLens - AI reports actual measured generalization metrics, compares against simple majority-class baselines, "
             "and explicitly warns against claiming false predictive success."
         )
 
@@ -2015,7 +2015,7 @@ def main():
                         st.download_button(
                             "📥 Download Held-Out Predictions CSV",
                             data=sub_preds.to_csv(index=False).encode("utf-8"),
-                            file_name=f"margintracer_test_predictions_{sel_pred_model.lower().replace(' ', '_')}.csv",
+                            file_name=f"leaklens_test_predictions_{sel_pred_model.lower().replace(' ', '_')}.csv",
                             mime="text/csv",
                         )
                 else:
